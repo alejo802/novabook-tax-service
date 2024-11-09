@@ -116,29 +116,38 @@ export const TaxPositionService = {
       for (const [key, itemData] of itemDataMap.entries()) {
         const { saleEvent, amendments } = itemData;
 
-        if (!saleEvent || saleEvent.date.getTime() > queryDate.getTime()) {
-          // No sale event up to query date, skip this item
+        // Collect all amendments up to the query date
+        const validAmendments = amendments.filter((am) => am.date.getTime() <= queryDate.getTime());
+
+        if (!saleEvent && validAmendments.length === 0) {
+          // No sale event or amendments up to query date, skip this item
           continue;
         }
 
-        let cost = saleEvent.cost;
-        let taxRate = saleEvent.taxRate;
+        let cost: number;
+        let taxRate: number;
 
-        // Filter amendments up to the query date
-        const validAmendments = amendments.filter((am) => am.date.getTime() <= queryDate.getTime());
+        if (saleEvent && saleEvent.date.getTime() <= queryDate.getTime()) {
+          // Start with the sale event
+          cost = saleEvent.cost;
+          taxRate = saleEvent.taxRate;
+        } else if (validAmendments.length > 0) {
+          // No sale event, use the earliest amendment
+          validAmendments.sort((a, b) => a.date.getTime() - b.date.getTime());
+          const firstAmendment = validAmendments[0];
+          cost = firstAmendment.cost;
+          taxRate = firstAmendment.taxRate;
+          logger.debug(`No sale event for item ${key}, using earliest amendment.`);
+        } else {
+          continue;
+        }
 
-        // Sort amendments by date
+        // Apply all valid amendments in order
         validAmendments.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-        // Apply amendments in order
         for (const amendment of validAmendments) {
-          if (amendment.date.getTime() >= saleEvent.date.getTime()) {
-            cost = amendment.cost;
-            taxRate = amendment.taxRate;
-          } else {
-            // Amendments before the sale event are pending and applied after the sale event
-            logger.debug(`Amendment before sale event for item ${key} is pending.`);
-          }
+          cost = amendment.cost;
+          taxRate = amendment.taxRate;
         }
 
         const tax = calculateTax(cost, taxRate);
