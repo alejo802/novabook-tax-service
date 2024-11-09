@@ -398,4 +398,61 @@ describe('TaxPositionService', () => {
     const resultAfter = await TaxPositionService.getTaxPosition('2024-02-22T14:00:00Z');
     expect(resultAfter).toBe(120); // Tax after amendment: 800 * 0.15 = 120
   });
+
+  it('should throw an error for invalid date format', async () => {
+    const invalidDateString = 'invalid-date';
+
+    await expect(TaxPositionService.getTaxPosition(invalidDateString)).rejects.toThrow(
+      'Invalid date format. Please provide a valid ISO 8601 date string.'
+    );
+  });
+
+  it('should skip items with no sale event and no valid amendments', async () => {
+    const queryDate = new Date('2024-02-22T12:00:00Z');
+    const amendmentDate = new Date('2024-02-22T13:00:00Z'); // After query date
+
+    const mockTransactions = []; // No sales
+
+    const mockAmendments: Partial<Amendment>[] = [
+      { date: amendmentDate, invoiceId: '123', itemId: 'item1', cost: 1000, taxRate: 0.2 },
+    ];
+
+    (TransactionRepository.findUpToDate as jest.Mock).mockResolvedValue([]);
+    (AmendmentRepository.findUpToDate as jest.Mock).mockResolvedValue(mockAmendments);
+
+    const result = await TaxPositionService.getTaxPosition('2024-02-22T12:00:00Z');
+    expect(result).toBe(0); // Should be 0 as there are no valid events up to the query date
+  });
+
+  it('should skip items with sale event after query date and no valid amendments', async () => {
+    const saleDate = new Date('2024-02-22T13:00:00Z'); // After query date
+    const queryDate = new Date('2024-02-22T12:00:00Z');
+
+    const mockTransactions = [
+      {
+        eventType: 'SALES',
+        date: saleDate,
+        invoiceId: '123',
+        items: [{ itemId: 'item1', cost: 1000, taxRate: 0.2 }],
+      },
+    ];
+
+    const mockAmendments: Partial<Amendment>[] = []; // No amendments
+
+    (TransactionRepository.findUpToDate as jest.Mock).mockResolvedValue(mockTransactions);
+    (AmendmentRepository.findUpToDate as jest.Mock).mockResolvedValue([]);
+
+    const result = await TaxPositionService.getTaxPosition('2024-02-22T12:00:00Z');
+    expect(result).toBe(0); // Should be 0 as the sale event is after the query date
+  });
+
+  it('should handle errors during processing and log them', async () => {
+    const queryDate = new Date('2024-02-22T12:00:00Z');
+
+    // Simulate an error in the TransactionRepository
+    (TransactionRepository.findUpToDate as jest.Mock).mockRejectedValue(new Error('Database error'));
+    (AmendmentRepository.findUpToDate as jest.Mock).mockResolvedValue([]);
+
+    await expect(TaxPositionService.getTaxPosition('2024-02-22T12:00:00Z')).rejects.toThrow('Database error');
+  });
 });
