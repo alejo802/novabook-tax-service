@@ -35,7 +35,7 @@ export const TransactionRepository = {
     return await TransactionModel.create(transactionData);
   },
 
-  async findByDate(date: Date): Promise<Transaction[]> {
+  async findUpToDate(date: Date): Promise<Transaction[]> {
     return await TransactionModel.find({ date: { $lte: date } }).exec();
   },
 

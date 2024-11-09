@@ -8,13 +8,14 @@ describe('AmendSaleController', () => {
   it('should amend a sale successfully', async () => {
     (AmendmentService.amend as jest.Mock).mockResolvedValueOnce(undefined); // Fix: Provide a resolved value
 
-    const response = await request(app).patch('/api/sale').send({
-      date: '2024-02-22T17:29:39Z',
-      invoiceId: '12345',
-      itemId: 'item1',
-      cost: 800,
-      taxRate: 0.1,
-    });
+    const response = await request(app)
+      .patch('/api/sale').send({
+        date: '2024-02-22T17:29:39Z',
+        invoiceId: '12345',
+        itemId: 'item1',
+        cost: 800,
+        taxRate: 0.1,
+      });
 
     expect(response.status).toBe(202);
   });

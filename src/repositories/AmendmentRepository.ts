@@ -27,7 +27,7 @@ export const AmendmentRepository = {
     return await AmendmentModel.find({ invoiceId }).exec();
   },
 
-  async findByDate(date: Date): Promise<Amendment[]> {
+  async findUpToDate(date: Date): Promise<Amendment[]> {
     return await AmendmentModel.find({ date: { $lte: date } }).exec();
   },
 };

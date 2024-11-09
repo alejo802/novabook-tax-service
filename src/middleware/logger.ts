@@ -1,6 +1,20 @@
-import { Request, Response, NextFunction } from 'express';
+import pino from 'pino';
 
-export const logger = (req: Request, res: Response, next: NextFunction) => {
-  console.log(`${req.method} ${req.url} - ${new Date().toISOString()}`);
-  next();
-};
+// Configure the Pino logger
+const logger = pino(
+  {
+    level: 'info',
+  },
+  process.env.NODE_ENV !== 'production'
+    ? pino.transport({
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'SYS:standard', // Format the timestamp
+          ignore: 'pid,hostname',
+        },
+      })
+    : undefined
+);
+
+export default logger;

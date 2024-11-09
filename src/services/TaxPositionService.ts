@@ -2,43 +2,158 @@ import { TransactionRepository } from '../repositories/TransactionRepository';
 import { AmendmentRepository } from '../repositories/AmendmentRepository';
 import { calculateTax } from '../utils/taxUtils';
 import { parseDate } from '../utils/dateUtils';
+import logger from '../middleware/logger';
+
+// Interfaces for clarity
+interface Event {
+  date: Date;
+  eventType: string;
+  [key: string]: any;
+}
+
+interface SaleEventData {
+  date: Date;
+  cost: number;
+  taxRate: number;
+}
+
+interface AmendmentData {
+  date: Date;
+  cost: number;
+  taxRate: number;
+}
+
+interface ItemData {
+  saleEvent?: SaleEventData;
+  amendments: AmendmentData[];
+}
 
 export const TaxPositionService = {
   async getTaxPosition(dateString: string): Promise<number> {
-    // Parse and validate the date using dateUtils
-    const date = parseDate(dateString);
+    logger.info(`Calculating tax position for date: ${dateString}`);
 
-    // Fetch all relevant transactions and amendments up to the given date
-    const transactions = await TransactionRepository.findByDate(date);
-    const amendments = await AmendmentRepository.findByDate(date);
+    // Parse and validate the date
+    let queryDate: Date;
+    try {
+      queryDate = parseDate(dateString);
+    } catch (error) {
+      logger.error(`Invalid date format: ${dateString}`);
+      throw new Error('Invalid date format. Please provide a valid ISO 8601 date string.');
+    }
 
-    let totalTax = 0;
-    let totalTaxPayments = 0;
+    try {
+      // Fetch all transactions up to the given date
+      const transactions = await TransactionRepository.findUpToDate(queryDate);
+      logger.info(`Fetched ${transactions.length} transactions up to date ${queryDate.toISOString()}`);
 
-    // Process sales transactions
-    transactions.forEach((transaction) => {
-      if (transaction.eventType === 'SALES') {
-        transaction.items?.forEach((item) => {
-          let { cost, taxRate } = item;
+      // Fetch all amendments up to the given date
+      const amendments = await AmendmentRepository.findUpToDate(queryDate);
+      logger.info(`Fetched ${amendments.length} amendments up to date ${queryDate.toISOString()}`);
 
-          // Apply any amendments
-          const amendment = amendments.find(
-            (am) =>
-              am.invoiceId === transaction.invoiceId && am.itemId === item.itemId
-          );
-          if (amendment) {
+      // Combine all events into a single list and ensure dates are Date objects
+      const allEvents: Event[] = [
+        ...transactions.map((tx) => ({
+          ...tx,
+          date: tx.date instanceof Date ? tx.date : new Date(tx.date),
+        })),
+        ...amendments.map((am) => ({
+          ...am,
+          date: am.date instanceof Date ? am.date : new Date(am.date),
+          eventType: 'AMENDMENT',
+        })),
+      ];
+
+      // Sort all events by date
+      allEvents.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      let totalTax = 0;
+      let totalTaxPayments = 0;
+
+      // Map to keep track of sales items, key is `${invoiceId}-${itemId}`
+      const itemDataMap = new Map<string, ItemData>();
+
+      // Process events to build item data
+      for (const event of allEvents) {
+        if (event.eventType === 'SALES') {
+          // Process sale items
+          const invoiceId = event.invoiceId;
+          event.items?.forEach((item: any) => {
+            const key = `${invoiceId}-${item.itemId}`;
+            let itemData = itemDataMap.get(key);
+            if (!itemData) {
+              itemData = { saleEvent: undefined, amendments: [] };
+              itemDataMap.set(key, itemData);
+            }
+            itemData.saleEvent = {
+              date: event.date,
+              cost: item.cost,
+              taxRate: item.taxRate,
+            };
+            logger.debug(`Processed sale event for item: ${key}`);
+          });
+        } else if (event.eventType === 'AMENDMENT') {
+          // Process amendment
+          const key = `${event.invoiceId}-${event.itemId}`;
+          let itemData = itemDataMap.get(key);
+          if (!itemData) {
+            itemData = { saleEvent: undefined, amendments: [] };
+            itemDataMap.set(key, itemData);
+          }
+          itemData.amendments.push({
+            date: event.date,
+            cost: event.cost,
+            taxRate: event.taxRate,
+          });
+          logger.debug(`Processed amendment for item: ${key}`);
+        } else if (event.eventType === 'TAX_PAYMENT') {
+          // Process tax payment
+          totalTaxPayments += event.amount || 0;
+          logger.debug(`Processed tax payment: ${event.amount || 0}`);
+        }
+      }
+
+      // Calculate tax for each item
+      for (const [key, itemData] of itemDataMap.entries()) {
+        const { saleEvent, amendments } = itemData;
+
+        if (!saleEvent || saleEvent.date.getTime() > queryDate.getTime()) {
+          // No sale event up to query date, skip this item
+          continue;
+        }
+
+        let cost = saleEvent.cost;
+        let taxRate = saleEvent.taxRate;
+
+        // Filter amendments up to the query date
+        const validAmendments = amendments.filter((am) => am.date.getTime() <= queryDate.getTime());
+
+        // Sort amendments by date
+        validAmendments.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+        // Apply amendments in order
+        for (const amendment of validAmendments) {
+          if (amendment.date.getTime() >= saleEvent.date.getTime()) {
             cost = amendment.cost;
             taxRate = amendment.taxRate;
+          } else {
+            // Amendments before the sale event are pending and applied after the sale event
+            logger.debug(`Amendment before sale event for item ${key} is pending.`);
           }
+        }
 
-          totalTax += calculateTax(cost, taxRate); // Use taxUtils to calculate tax
-        });
-      } else if (transaction.eventType === 'TAX_PAYMENT') {
-        totalTaxPayments += transaction.amount || 0;
+        const tax = calculateTax(cost, taxRate);
+        totalTax += tax;
+        logger.debug(`Calculated tax for item ${key}: ${tax}`);
       }
-    });
 
-    // Tax position = Total tax from sales - Tax payments made
-    return totalTax - totalTaxPayments;
+      // Tax position = total tax from sales - total tax payments
+      const taxPosition = totalTax - totalTaxPayments;
+      logger.info(`Calculated tax position: ${taxPosition}`);
+
+      return taxPosition;
+    } catch (error) {
+      logger.error(`Error calculating tax position: ${(error as Error).message}`, error);
+      throw error;
+    }
   },
 };

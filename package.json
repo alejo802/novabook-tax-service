@@ -18,6 +18,9 @@
         "helmet": "^6.2.0",
         "mongoose": "^8.8.0",
         "morgan": "^1.10.0",
+        "pino": "^9.5.0",
+        "pino-http": "^10.3.0",
+        "pino-pretty": "^12.1.0",
         "zod": "^3.23.8"
     },
     "devDependencies": {

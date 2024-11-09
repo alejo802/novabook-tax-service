@@ -6,6 +6,6 @@ export const TransactionService = {
   },
 
   async getTransactionsByDate(date: Date) {
-    return await TransactionRepository.findByDate(date);
+    return await TransactionRepository.findUpToDate(date);
   },
 };

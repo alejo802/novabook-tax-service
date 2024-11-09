@@ -22,7 +22,7 @@ describe('TransactionRepository', () => {
       items: [{ itemId: 'item1', cost: 1000, taxRate: 0.2 }],
     });
 
-    const transactions = await TransactionRepository.findByDate(date);
+    const transactions = await TransactionRepository.findUpToDate(date);
     expect(transactions.length).toBe(1);
   });
 });
