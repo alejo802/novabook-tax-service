@@ -13,6 +13,11 @@ import {
 
 const router = Router();
 
+// Health check endpoint
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 // POST /transactions: Validate both SALES and TAX_PAYMENT events
 router.post(
   '/transactions',
