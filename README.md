@@ -35,7 +35,7 @@ This is a TypeScript-based tax service for Novabook. It allows users to:
 - **Jest** and **Supertest** are used for unit and integration tests.
 - Tests are run against an in-memory MongoDB instance using **MongoMemoryServer** for fast and isolated tests.
 
----
+In addition to the unit tests, a comprehensive black box runbook has been created. This runbook includes a series of `curl` commands designed to test the service from an external perspective, ensuring its functionality as a black box. The runbook can be found in the [`api_blackbox_test_runbook.md`](./api_blackbox_test_runbook.md) file.
 
 ## **Installation**
 

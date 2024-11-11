@@ -1,3 +1,6 @@
+//
+// Serves as a field validator but can also be utilized for business logic.
+//
 export function validateAmendmentRequest(body: any): string[] {
     const errors: string[] = [];
   
